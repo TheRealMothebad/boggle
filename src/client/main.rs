@@ -178,8 +178,8 @@ fn scraper_worm(x: usize, y: usize, prog: String, board: &[[char; 4]; 4], p: &Ve
                     new_prog.push(throwfarther);
                     //println!("prog: {} new_prog: {} fin: {} comp: {}", &prog, &new_prog, &fin, substr_compare(&new_prog, &fin));
                     if is_sub_word(&new_prog, &jsons) {
-                        if is_word(&new_prog, &jsons) {
-                            if !res.contains(&new_prog) {
+                        if !res.contains(&new_prog) {
+                            if is_word(&new_prog, &jsons) {
                                 println!("Pushing: {}", &new_prog);
                                 res.push(new_prog.clone());
                             }
