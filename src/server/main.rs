@@ -1,37 +1,12 @@
 use std::{
-    io::{stdout, Read, Write},
+    io::{stdout, Read, Write, stdin},
     net::{TcpListener, TcpStream},
-    sync::mpsc,
-    sync::mpsc::{Sender, Receiver, TryRecvError},
+    sync::mpsc::{TryRecvError, Receiver},
     thread,
-    thread::JoinHandle,
     time::Duration,
 };
 
-pub struct Task {
-    sender: Sender<bool>,
-    handle: JoinHandle<()>,
-}
-
-impl Task {
-    pub fn new<F>(function: F) -> Self
-    where
-        F: FnOnce(Receiver<bool>),
-        F: Send + 'static,
-    {
-        let (sender, receiver) = mpsc::channel();
-        let handle = thread::spawn(move || {
-            function(receiver);
-        });
-
-        Self { sender, handle }
-    }
-
-    pub fn kill(self) {
-        self.sender.send(true).unwrap();
-        self.handle.join().unwrap();
-    }
-}
+use boggle::shared::task::Task;
 
 fn handle_client(mut connection: TcpStream, rx: Receiver<bool>) {
     //handle the client
@@ -81,7 +56,6 @@ fn server(rx: Receiver<bool>) {
 
         thread::sleep(Duration::new(1, 0));
     }
-    println!("Broke out");
 
     //consume connections and kill them
     for conn in connections.into_iter() {
@@ -89,10 +63,24 @@ fn server(rx: Receiver<bool>) {
     }
 }
 
-fn main(){
+fn main() -> std::io::Result<()> {
     let serv: Task = Task::new(|receiver| {
         server(receiver);
     });
 
+    println!("Getting here");
 
+    //listen for input and kill the server if we receive quit
+    loop {
+        let mut s = String::new();
+        print!("Type quit to quit: ");
+        stdout().flush()?;
+        stdin().read_line(&mut s)?;
+        if s.trim_end().eq("quit") {
+            serv.kill();
+            break;
+        }
+    }
+
+    Ok(())
 }
