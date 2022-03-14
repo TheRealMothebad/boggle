@@ -90,5 +90,9 @@ fn server(rx: Receiver<bool>) {
 }
 
 fn main(){
-    server();
+    let serv: Task = Task::new(|receiver| {
+        server(receiver);
+    });
+
+
 }
