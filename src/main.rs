@@ -1,3 +1,8 @@
+//todo
+//generate more accurate board from boggle distribution
+//finish chain of user in
+//implement computer player
+
 use rand::seq::SliceRandom; // 0.7.2
 
 extern crate serde_derive;
@@ -6,6 +11,12 @@ use serde_json;
 use std::fs::File;
 use std::path::Path;
 use std::io::prelude::*;
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+struct Previous {
+    x: i32,
+    y: i32,
+}
 
 fn main() {
     println!("Hello, world!");
@@ -34,8 +45,8 @@ fn contains_word(word: &String, board: &[[char; 4]; 4]) -> bool {
         for y in 0..4 {
             let letter = word[0 .. 1].to_string();
             if board[x][y].to_string().eq(&letter) {
-                let mut prev: Vec<[i32; 2]> = Vec::new();
-                let res = worm(x, y, letter, &word, &board, &mut prev);
+                let prev: Vec<Previous> = Vec::new();
+                let res = worm(x, y, letter, &word, &board, &prev);
                 if res {
                     return true
                 }
@@ -49,8 +60,9 @@ fn contains_word(word: &String, board: &[[char; 4]; 4]) -> bool {
 //     let g = 0;
 // }
 
-fn worm(x: usize, y: usize, prog: String, fin: &String, board: &[[char; 4]; 4], prev: &mut Vec<[i32; 2]>) -> bool {
-    prev.push([x as i32, y as i32]);
+fn worm(x: usize, y: usize, prog: String, fin: &String, board: &[[char; 4]; 4], p: &Vec<Previous>) -> bool {
+    let mut prev = p.clone();
+    prev.push(Previous {x: x as i32, y: y as i32});
     println!("x: {} y: {} prog: {} fin: {} prev: {:?} ", &x, &y, &prog, &fin, &prev);
     if &prog == fin {
         return true;
@@ -63,7 +75,7 @@ fn worm(x: usize, y: usize, prog: String, fin: &String, board: &[[char; 4]; 4], 
             //println!("{}(y) + {}(rely) - 1 = {}", y, rely, y as i32 + rely as i32 - 1);
             let newy: i32 = (y as i32) + (rely as i32) - 1;
             if newx > -1 && newx < 4 && newy > -1 && newy < 4 {
-                let newxy = [newx, newy];
+                let newxy = Previous {x : newx, y : newy};
                 if !prev.contains(&newxy) {
                     println!("newx: {} newy: {}", newx, newy);
                     let mut new_prog: String = prog.clone();
@@ -73,7 +85,7 @@ fn worm(x: usize, y: usize, prog: String, fin: &String, board: &[[char; 4]; 4], 
                     println!("prog: {} new_prog: {} fin: {} comp: {}", &prog, &new_prog, &fin, substr_compare(&new_prog, &fin));
                     if substr_compare(&new_prog, &fin) {
                         println!("new worm with ({}, {})", newx, newy);
-                        let res = worm(newx as usize, newy as usize, new_prog, fin, board, prev);
+                        let res = worm(newx as usize, newy as usize, new_prog, fin, board, &prev);
                         if res {
                             return true;
                         }
