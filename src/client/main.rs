@@ -2,6 +2,8 @@
 //generate more accurate board from boggle distribution
 //finish chain of user in
 //implement computer player
+//
+mod platform;
 
 use rand::seq::SliceRandom; // 0.7.2
 
@@ -132,7 +134,7 @@ fn json_to_string(p: &Path) -> String {
 
 fn gen_path(i: i32, chars: &[char; 26]) -> String {
     let mut path_str: String = String::new();
-    path_str.push_str("/home/swyngaard/Documents/projects/boggle/src/client/sub_dicts/");
+    path_str.push_str(platform::JSON_PATH);
     path_str.push(chars[i as usize]);
     path_str.push_str("subDict.json");
     println!("{:?}", &path_str);
