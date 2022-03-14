@@ -132,7 +132,7 @@ fn json_to_string(p: &Path) -> String {
 
 fn gen_path(i: i32, chars: &[char; 26]) -> String {
     let mut path_str: String = String::new();
-    path_str.push_str("C:\\Users\\mothe\\rust\\boggle\\src\\sub_dicts\\");
+    path_str.push_str("/home/swyngaard/Documents/projects/boggle/src/client/sub_dicts/");
     path_str.push(chars[i as usize]);
     path_str.push_str("subDict.json");
     println!("{:?}", &path_str);
