@@ -14,7 +14,7 @@ impl Task {
     pub fn new<F>(function: F) -> Self
     where
         F: FnOnce(Receiver<bool>),
-        F: Send + 'static,
+        F: Send + 'static
     {
         let (sender, receiver) = mpsc::channel();
         let handle = thread::spawn(move || {
