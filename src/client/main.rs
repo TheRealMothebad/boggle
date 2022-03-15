@@ -2,7 +2,7 @@
 //COMPELTE generate more accurate board from actual boggle distribution
 //COMPLETE finish chain of user in
 //KINDA COMPLETE implement computer "player" (more of a scraper) <-- John's current task
-//add timer?
+//add timer? need some threading for this so probs too fancy for me for now
 
 mod platform;
 mod chars;
@@ -13,12 +13,24 @@ use rand::seq::SliceRandom; // 0.7.2
 extern crate serde_derive;
 use serde_json;
 
+//file imports
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
-use std::thread;
+
 
 use std::net::TcpStream;
+
+//thread stuff
+use std::io;
+use std::sync::mpsc;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::TryRecvError;
+use std::thread;
+use std::time;
+extern crate timer;
+extern crate chrono;
+use std::sync::mpsc::channel;
 
 //use boggle::shared::task::Task;
 
@@ -39,20 +51,63 @@ fn main() {
     print_board(&board);
     //print!("{:?}\n", &board);
 
-    let scrape: Vec<String> = scraper(&board, &jsons);
-    println!("{:?}", scrape);
+    //let scrape: Vec<String> = scraper(&board, &jsons);
+    //println!("{:?}", scrape);
 
     //game loop
-    loop {
-        let u_in = input(&"Guess a word:\n").to_lowercase();
-        println!("word: {}", is_word(&u_in, &jsons));
-        println!("sub: {}", is_sub_word(&u_in, &jsons));
-        println!("contains: {}", board_contains(&u_in, &board));
-        if check_input(&u_in, &board, &jsons) {
-            println!("{} is a valid word!", &u_in)
-        }
-    }
+    // loop {
+    //     let u_in = input(&"Guess a word:\n").to_lowercase();
+    //     println!("word: {}", is_word(&u_in, &jsons));
+    //     println!("sub: {}", is_sub_word(&u_in, &jsons));
+    //     println!("contains: {}", board_contains(&u_in, &board));
+    //     print_board(&board);
+    //     if check_input(&u_in, &board, &jsons) {
+    //         println!("{} is a valid word!", &u_in)
+    //     }
 
+    let mut stdin_channel = spawn_stdin_channel("Guess a word:\n");
+
+    let timer = timer::Timer::new();
+    let (tx, rx) = channel();
+
+
+    let _guard = timer.schedule_with_delay(chrono::Duration::seconds(5), move || {
+        let _ignored = tx.send(()); // Avoid unwrapping here.
+    });
+
+    loop {
+        match stdin_channel.try_recv() {
+            Ok(key) => got_message(key),
+            Err(TryRecvError::Empty) => print!(""),
+            Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
+        }
+        match rx.try_recv() {
+            Ok(_) | Err(TryRecvError::Disconnected) => {break},
+            Err(TryRecvError::Empty) => {}
+        }
+        sleep(200);
+    }
+}
+
+fn got_message(inp: String) {
+    println!("mesage: {}", inp);
+
+}
+
+fn spawn_stdin_channel(prompt: &'static str) -> Receiver<String> {
+    let (tx, rx) = mpsc::channel::<String>();
+    thread::spawn(move || loop {
+        let mut buffer = String::new();
+        print!("{}", prompt);
+        io::stdin().read_line(&mut buffer).unwrap();
+        tx.send(buffer).unwrap();
+    });
+    return rx
+}
+
+fn sleep(millis: u64) {
+    let duration = time::Duration::from_millis(millis);
+    thread::sleep(duration);
 }
 
 fn _client() {
