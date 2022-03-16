@@ -4,9 +4,9 @@
 //KINDA COMPLETE implement computer "player" (more of a scraper) <-- John's current task
 //add timer? need some threading for this so probs too fancy for me for now
 
-mod platform;
 mod chars;
 mod dice;
+mod platform;
 
 use rand::seq::SliceRandom; // 0.7.2
 
@@ -18,7 +18,6 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 
-
 use std::net::TcpStream;
 
 //thread stuff
@@ -28,8 +27,8 @@ use std::sync::mpsc::Receiver;
 use std::sync::mpsc::TryRecvError;
 use std::thread;
 use std::time;
-extern crate timer;
 extern crate chrono;
+extern crate timer;
 use std::sync::mpsc::channel;
 
 //use boggle::shared::task::Task;
@@ -44,7 +43,7 @@ fn main() {
     //thread::spawn(client);
 
     // preset stuff
-    let jsons = load_jsons();
+    /*let jsons = load_jsons();
 
     let board = rand_board();
 
@@ -86,12 +85,13 @@ fn main() {
             Err(TryRecvError::Empty) => {}
         }
         sleep(200);
-    }
+    }*/
+
+    client();
 }
 
 fn got_message(inp: String) {
     println!("mesage: {}", inp);
-
 }
 
 fn spawn_stdin_channel(prompt: &'static str) -> Receiver<String> {
@@ -102,7 +102,7 @@ fn spawn_stdin_channel(prompt: &'static str) -> Receiver<String> {
         io::stdin().read_line(&mut buffer).unwrap();
         tx.send(buffer).unwrap();
     });
-    return rx
+    return rx;
 }
 
 fn sleep(millis: u64) {
@@ -110,18 +110,31 @@ fn sleep(millis: u64) {
     thread::sleep(duration);
 }
 
-fn _client() {
+fn client() {
     let mut connection = match TcpStream::connect("127.0.0.1:1337") {
         Ok(conn) => conn,
         Err(_) => return,
     };
 
-    for x in 0..10 {
+    println!("{:?}", connection);
+
+    loop {
+        let mut buffer = [0; 1000];
+        connection
+            .read(&mut buffer)
+            .expect("Failed to receive message");
+        let message = std::str::from_utf8(&buffer).expect("Failed to create string from buffer");
+        println!("Received: {}", message);
+    }
+
+    /*for x in 0..10 {
         let message = format!("This is message: {}\n", x);
         connection
             .write(message.as_bytes())
             .expect("Failed to send message");
-    }
+
+
+    }*/
 }
 
 fn board_contains(word: &String, board: &[[char; 4]; 4]) -> bool {
@@ -212,19 +225,30 @@ fn scraper(board: &[[char; 4]; 4], jsons: &Vec<Vec<String>>) -> Vec<String> {
     return res;
 }
 
-fn scraper_worm(x: usize, y: usize, prog: String, board: &[[char; 4]; 4], p: &Vec<Previous>, res: &mut Vec<String>, jsons: &Vec<Vec<String>>) {
+fn scraper_worm(
+    x: usize,
+    y: usize,
+    prog: String,
+    board: &[[char; 4]; 4],
+    p: &Vec<Previous>,
+    res: &mut Vec<String>,
+    jsons: &Vec<Vec<String>>,
+) {
     let mut prev = p.clone();
-    prev.push(Previous {x: x as i32, y: y as i32});
+    prev.push(Previous {
+        x: x as i32,
+        y: y as i32,
+    });
     //println!("x: {} y: {} prog: {} fin: {} prev: {:?} ", &x, &y, &prog, &fin, &prev);
-    for relx in 0 .. 3 {
-        for rely in 0 .. 3 {
+    for relx in 0..3 {
+        for rely in 0..3 {
             //println!("relx: {} rely: {}", relx, rely);
             //println!("{}(x) + {}(relx) - 1 = {}", x, relx, x as i32 + relx as i32 - 1);
             let newx: i32 = (x as i32) + (relx as i32) - 1;
             //println!("{}(y) + {}(rely) - 1 = {}", y, rely, y as i32 + rely as i32 - 1);
             let newy: i32 = (y as i32) + (rely as i32) - 1;
             if newx > -1 && newx < 4 && newy > -1 && newy < 4 {
-                let newxy = Previous {x : newx, y : newy};
+                let newxy = Previous { x: newx, y: newy };
                 if !prev.contains(&newxy) {
                     //println!("newx: {} newy: {}", newx, newy);
                     let mut new_prog: String = prog.clone();
@@ -240,7 +264,15 @@ fn scraper_worm(x: usize, y: usize, prog: String, board: &[[char; 4]; 4], p: &Ve
                             }
                         }
                         //println!("new worm with ({}, {})", newx, newy);
-                        scraper_worm(newx as usize, newy as usize, new_prog, &board, &prev, res, &jsons);
+                        scraper_worm(
+                            newx as usize,
+                            newy as usize,
+                            new_prog,
+                            &board,
+                            &prev,
+                            res,
+                            &jsons,
+                        );
                     }
                 }
             }
@@ -249,7 +281,7 @@ fn scraper_worm(x: usize, y: usize, prog: String, board: &[[char; 4]; 4], p: &Ve
 }
 
 fn load_jsons() -> Vec<Vec<String>> {
-    let mut out_array: Vec<Vec<String>>= Vec::new();
+    let mut out_array: Vec<Vec<String>> = Vec::new();
     let mut i: i32 = 0;
     loop {
         let path_str = gen_path(i);
@@ -294,14 +326,14 @@ fn input_is_str(inp: &String) -> bool {
             return false;
         }
     }
-    return true
+    return true;
 }
 
-fn is_word (word: &String, jsons: &Vec<Vec<String>>) -> bool {
+fn is_word(word: &String, jsons: &Vec<Vec<String>>) -> bool {
     //assumes input is a string composed of only the 26 lowercase letters
     let res = correct_json(&word, &jsons).iter().position(|x| x.eq(word));
     if res != None {
-        return true
+        return true;
     }
     return false;
 }
@@ -344,7 +376,7 @@ fn substr_compare(sub: &String, word: &String) -> bool {
     return false;
 }
 
-fn is_sub_word (sub: &String,  json: &Vec<Vec<String>>) -> bool {
+fn is_sub_word(sub: &String, json: &Vec<Vec<String>>) -> bool {
     //println!("{}, {}", &len, &word);
     let res = correct_json(&sub, &json)
         .iter()

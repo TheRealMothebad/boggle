@@ -1,13 +1,19 @@
 mod server;
 
+use server::Server;
+
 use std::io::{Write, stdin, stdout};
 
 fn main() -> std::io::Result<()> {
-    let server = server::Server::new();
+    let server = Server::new();
 
-    server.send("Hello World!");
-    //listen for input and kill the server if we receive quit
     loop {
+        server.send("Hello World!");
+    }
+
+
+    //listen for input and kill the server if we receive quit
+    /*loop {
         let mut s = String::new();
         print!("Type quit to quit: ");
         stdout().flush()?;
@@ -16,7 +22,7 @@ fn main() -> std::io::Result<()> {
             server.kill();
             break;
         }
-    }
+    }*/
 
     Ok(())
 }
