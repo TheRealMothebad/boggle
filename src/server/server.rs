@@ -1,11 +1,7 @@
-use boggle::shared::task::Task;
-
 use std::{
     io::{Read, Write},
-    mem::replace,
     net::{TcpListener, TcpStream},
-    rc::Rc,
-    sync::mpsc,
+    sync::{mpsc, Arc, Mutex},
     sync::mpsc::{Receiver, Sender, TryRecvError},
     thread,
     time::Duration,
@@ -13,6 +9,7 @@ use std::{
 
 use stoppable_thread::{SimpleAtomicBool, StoppableHandle};
 
+//listeners view of a connection
 struct Connection {
     handle: StoppableHandle<()>,
     sender: Sender<String>,
@@ -34,7 +31,7 @@ impl Server {
         };
 
         instance.handle = Some(stoppable_thread::spawn(move |stopped| {
-            Self::listen_loop(stopped, m_receiver);
+            Self::handler(stopped, m_receiver);
         }));
 
         instance
@@ -50,20 +47,22 @@ impl Server {
         self.handle.unwrap().stop().join().expect("Failed to join");
     }
 
-    fn listen_loop(stopped: &SimpleAtomicBool, receiver: Receiver<String>) {
+    fn handler(stopped: &SimpleAtomicBool, receiver: Receiver<String>) {
         let listener = TcpListener::bind("127.0.0.1:1337").expect("Couldn't Bind to Socket");
         listener.set_nonblocking(true).unwrap();
 
         let mut connections: Vec<Connection> = Vec::new();
+        let hosts: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         while !stopped.get() {
             match listener.accept() {
                 Ok((connection, ..)) => {
                     let (tx, rx) = mpsc::channel();
                     let (has_died_s, has_died_r) = mpsc::channel();
+                    let h = Arc::clone(&hosts);
                     connections.push(Connection {
                         handle: stoppable_thread::spawn(move |stopped| {
-                            Self::handle_client(stopped, connection, rx, has_died_s)
+                            Self::handle_client(stopped, connection, h, has_died_s)
                         }),
                         sender: tx,
                         has_died: has_died_r,
@@ -104,8 +103,6 @@ impl Server {
             thread::sleep(Duration::new(1, 0));
         }
 
-        println!("Breaking out!");
-
         //consume connections and kill them
         for conn in connections.into_iter() {
             conn.handle
@@ -118,29 +115,40 @@ impl Server {
     fn handle_client(
         stopped: &SimpleAtomicBool,
         mut connection: TcpStream,
-        m_receiver: Receiver<String>,
+        hosts_lock: Arc<Mutex<Vec<String>>>,
         has_died: Sender<()>,
     ) {
         //handle the client
-        while !stopped.get() {
-            match m_receiver.try_recv() {
-                Ok(message) => {
-                    match connection.write(message.as_bytes()) {
-                        Ok(_) => {}
-                        //kill this thread if we receive an error
-                        Err(_) => {
-                            has_died.send(()).expect("Failed to send has died");
-                            return;
-                        }
-                    }
-                    ();
+        loop {
+            let command = read_string(&mut connection).unwrap();
+            println!("command: {}", command);
+            let command_args: Vec<&str> = command.split(' ').collect::<Vec<&str>>();
+            if command_args[0].eq("host") {
+                let mut hosts = hosts_lock.lock().unwrap();
+                if command_args.len() > 1 {
+                    hosts.push(command_args[1].to_string());
+                    println!("hosting {}", command_args[1]);
+                    //break
                 }
-                Err(_) => {}
+            } else if command_args[0].eq("join") {
+                println!("The client would like to join!")
+            } else if command.eq("list") {
+                let hosts = hosts_lock.lock().unwrap();
+                println!("listing: {}", hosts.join(" "));
+                if hosts.len() > 0 {
+                    connection.write(hosts.join(" ").as_bytes()).unwrap();
+                } else {
+                    connection.write(b"[NONE]").unwrap();
+                }
             }
-
-            thread::sleep(Duration::from_millis(33));
         }
 
         println!("Killing connection");
     }
+}
+
+fn read_string(mut connection: &TcpStream) -> std::io::Result<String> {
+    let mut buffer = [0 as u8; 10000];
+    let length = connection.read(&mut buffer)?;
+    Ok(std::str::from_utf8(&buffer[..length]).unwrap().to_string())
 }

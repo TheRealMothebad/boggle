@@ -3,6 +3,8 @@
 //COMPLETE finish chain of user in
 //KINDA COMPLETE implement computer "player" (more of a scraper) <-- John's current task
 //add timer? need some threading for this so probs too fancy for me for now
+//embed in umbriac.com
+// https://blog.logrocket.com/rust-webassembly-frontend-web-app-yew/
 
 mod chars;
 mod dice;
@@ -31,7 +33,15 @@ extern crate chrono;
 extern crate timer;
 use std::sync::mpsc::channel;
 
+use std::io::stdout;
+use std::time::Duration;
+
 //use boggle::shared::task::Task;
+
+struct PlayerResult {
+    name: String,
+    words: Vec<String>,
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct Previous {
@@ -39,59 +49,147 @@ struct Previous {
     y: i32,
 }
 
-fn main() {
-    //thread::spawn(client);
-
-    // preset stuff
-    /*let jsons = load_jsons();
-
-    let board = rand_board();
+fn main() -> std::io::Result<()> {
+    let online = get_online();
+    let mut connection: Option<TcpStream> = None;
+    let board = if online {
+        connection = Some(create_connection());
+        server_browser(&connection.unwrap())
+    } else {
+        rand_board()
+    };
 
     print_board(&board);
-    //print!("{:?}\n", &board);
 
-    //let scrape: Vec<String> = scraper(&board, &jsons);
-    //println!("{:?}", scrape);
+    let user_words = run(&board);
 
-    //game loop
-    // loop {
-    //     let u_in = input(&"Guess a word:\n").to_lowercase();
-    //     println!("word: {}", is_word(&u_in, &jsons));
-    //     println!("sub: {}", is_sub_word(&u_in, &jsons));
-    //     println!("contains: {}", board_contains(&u_in, &board));
-    //     print_board(&board);
-    //     if check_input(&u_in, &board, &jsons) {
-    //         println!("{} is a valid word!", &u_in)
-    //     }
+    println!("{:?}", user_words);
 
-    let mut stdin_channel = spawn_stdin_channel("Guess a word:\n");
+    /*let mut player_results = Vec::new();
+    if online {
+        player_results: Vec<PlayerResult> = get_final_state(connection.unwrap(), users_words);
+    }
+    player_results.push(PlayerResult { name: String::from("You"), words: user_words});
+
+    results(player_results);*/
+
+    Ok(())
+}
+
+fn get_online() -> bool {
+    loop {
+        let choice = input("offline or online: ");
+        if choice.eq("online") {
+            return true;
+        } else if choice.eq("offline") {
+            return false;
+        }
+    }
+}
+
+fn create_connection() -> TcpStream {
+    loop {
+        let ip = input("What ip would you like to connect to: ");
+        match TcpStream::connect(ip) {
+            Ok(connection) => return connection,
+            Err(_) => println!("Could not connect"),
+        }
+    }
+}
+
+fn server_browser(mut connection: &TcpStream) -> [[char; 4]; 4] {
+    //rand_board()
+    loop {
+        let command = input("host, join, or list: ");
+        let command_args: Vec<&str> = command.split(' ').collect::<Vec<&str>>();
+        if command_args[0].eq("host") || command_args[0].eq("join") {
+            println!("{:?}", command_args);
+            connection.write(command.as_bytes()).unwrap();
+            //wait for someone to connect
+            /*let response = wait_for_response(&connection);
+            if response.is_some() {
+                break
+            }*/
+        } else if command_args[0].eq("list") {
+            connection.write(command.as_bytes()).unwrap();
+            let hosts = read_string(&connection).unwrap();
+            println!("hosts: {}", hosts);
+        }
+    }
+
+    rand_board()
+}
+
+fn read_string(mut connection: &TcpStream) -> std::io::Result<String> {
+    let mut buffer = [0 as u8; 10000];
+    let length = connection.read(&mut buffer)?;
+    Ok(std::str::from_utf8(&buffer[..length]).unwrap().to_string())
+}
+
+/*fn wait_for_response(connection: &TcpStream) -> Option<String> {
+    let waiting = stoppable_thread::spawn(|stopped| {
+        let conn = connection.clone();
+        conn.set_nonblocking(true).unwrap();
+
+        while !stopped.get() {
+            match read_string(&conn) {
+                Ok(response) => return Some(response),
+                Err(_) => {},
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        conn.set_nonblocking(false).unwrap();
+
+        None
+    });
+
+    //while we wait give the user the option to quit
+    loop {
+        let q = input("type 'quit' or to stop waiting\n");
+        if q.eq("quit") {
+            waiting.stop.join();
+            return None 
+        }
+    }
+}*/
+
+fn get_final_state(connection: &TcpStream, user_words: &Vec<String>) {}
+
+fn run(board: &[[char; 4]; 4]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+
+    let jsons = load_jsons();
+
+    let stdin_channel = spawn_stdin_channel("Guess a word:\n");
 
     let timer = timer::Timer::new();
     let (tx, rx) = channel();
 
-
-    let _guard = timer.schedule_with_delay(chrono::Duration::seconds(5), move || {
+    let _guard = timer.schedule_with_delay(chrono::Duration::seconds(120), move || {
         let _ignored = tx.send(()); // Avoid unwrapping here.
     });
 
     loop {
         match stdin_channel.try_recv() {
-            Ok(key) => got_message(key),
+            Ok(key) => {
+                let word = key.trim().to_string();
+                if check_input(&word, &board, &jsons) {
+                    out.push(word);
+                }
+            }
             Err(TryRecvError::Empty) => print!(""),
             Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
         }
+
         match rx.try_recv() {
-            Ok(_) | Err(TryRecvError::Disconnected) => {break},
+            Ok(_) | Err(TryRecvError::Disconnected) => break,
             Err(TryRecvError::Empty) => {}
         }
         sleep(200);
-    }*/
+    }
 
-    client();
-}
-
-fn got_message(inp: String) {
-    println!("mesage: {}", inp);
+    out
 }
 
 fn spawn_stdin_channel(prompt: &'static str) -> Receiver<String> {
@@ -110,32 +208,21 @@ fn sleep(millis: u64) {
     thread::sleep(duration);
 }
 
-fn client() {
+/*fn client() {
     let mut connection = match TcpStream::connect("127.0.0.1:1337") {
         Ok(conn) => conn,
         Err(_) => return,
     };
 
-    println!("{:?}", connection);
-
     loop {
         let mut buffer = [0; 1000];
-        connection
+        let length = connection
             .read(&mut buffer)
             .expect("Failed to receive message");
-        let message = std::str::from_utf8(&buffer).expect("Failed to create string from buffer");
-        println!("Received: {}", message);
+        let message = std::str::from_utf8(&buffer[0..length]).expect("Failed to create string from buffer");
+        println!("Received: {} of length: {}", message, message.len());
     }
-
-    /*for x in 0..10 {
-        let message = format!("This is message: {}\n", x);
-        connection
-            .write(message.as_bytes())
-            .expect("Failed to send message");
-
-
-    }*/
-}
+}*/
 
 fn board_contains(word: &String, board: &[[char; 4]; 4]) -> bool {
     for x in 0..4 {
@@ -153,9 +240,25 @@ fn board_contains(word: &String, board: &[[char; 4]; 4]) -> bool {
     return false;
 }
 
-// fn check_board(word: &String, board: &[[char; 4]; 4]) {
-//     let g = 0;
-// }
+struct GameResult {
+    players: Vec<PlayerResult>,
+    shared: Vec<String>,
+    winner: PlayerResult,
+}
+
+fn results(p_res: Vec<PlayerResult>) {
+    for word in &p_res[0].words {
+        for player in &p_res {
+            //if player.words.contains(word)
+            let _x = 0;
+        }
+    }
+    //pretty_print(p_res)
+}
+
+fn pretty_print(game_result: GameResult) {
+    let _x = 0;
+}
 
 fn worm(
     x: usize,
@@ -179,26 +282,15 @@ fn worm(
     }
     for relx in 0..3 {
         for rely in 0..3 {
-            //println!("relx: {} rely: {}", relx, rely);
-            //println!("{}(x) + {}(relx) - 1 = {}", x, relx, x as i32 + relx as i32 - 1);
             let newx: i32 = (x as i32) + (relx as i32) - 1;
-            //println!("{}(y) + {}(rely) - 1 = {}", y, rely, y as i32 + rely as i32 - 1);
             let newy: i32 = (y as i32) + (rely as i32) - 1;
             if newx > -1 && newx < 4 && newy > -1 && newy < 4 {
                 let newxy = Previous { x: newx, y: newy };
                 if !prev.contains(&newxy) {
-                    //println!("newx: {} newy: {}", newx, newy);
                     let mut new_prog: String = prog.clone();
                     let throwaway: [char; 4] = board[newx as usize];
                     let throwfarther: char = throwaway[newy as usize];
                     new_prog.push(throwfarther);
-                    // println!(
-                    //     "prog: {} new_prog: {} fin: {} comp: {}",
-                    //     &prog,
-                    //     &new_prog,
-                    //     &fin,
-                    //     substr_compare(&new_prog, &fin)
-                    // );
                     if substr_compare(&new_prog, &fin) {
                         //println!("new worm with ({}, {})", newx, newy);
                         let res = worm(newx as usize, newy as usize, new_prog, fin, board, &prev);
@@ -239,23 +331,17 @@ fn scraper_worm(
         x: x as i32,
         y: y as i32,
     });
-    //println!("x: {} y: {} prog: {} fin: {} prev: {:?} ", &x, &y, &prog, &fin, &prev);
     for relx in 0..3 {
         for rely in 0..3 {
-            //println!("relx: {} rely: {}", relx, rely);
-            //println!("{}(x) + {}(relx) - 1 = {}", x, relx, x as i32 + relx as i32 - 1);
             let newx: i32 = (x as i32) + (relx as i32) - 1;
-            //println!("{}(y) + {}(rely) - 1 = {}", y, rely, y as i32 + rely as i32 - 1);
             let newy: i32 = (y as i32) + (rely as i32) - 1;
             if newx > -1 && newx < 4 && newy > -1 && newy < 4 {
                 let newxy = Previous { x: newx, y: newy };
                 if !prev.contains(&newxy) {
-                    //println!("newx: {} newy: {}", newx, newy);
                     let mut new_prog: String = prog.clone();
                     let throwaway: [char; 4] = board[newx as usize];
                     let throwfarther: char = throwaway[newy as usize];
                     new_prog.push(throwfarther);
-                    //println!("prog: {} new_prog: {} fin: {} comp: {}", &prog, &new_prog, &fin, substr_compare(&new_prog, &fin));
                     if is_sub_word(&new_prog, &jsons) {
                         if !res.contains(&new_prog) {
                             if is_word(&new_prog, &jsons) {
@@ -263,7 +349,6 @@ fn scraper_worm(
                                 res.push(new_prog.clone());
                             }
                         }
-                        //println!("new worm with ({}, {})", newx, newy);
                         scraper_worm(
                             newx as usize,
                             newy as usize,
@@ -302,15 +387,17 @@ fn load_jsons() -> Vec<Vec<String>> {
 //USER INPUT FUNCTIONS
 fn input(prompt: &str) -> String {
     print!("{}", prompt);
+    stdout().flush().expect("Couldn't flush stdout");
     let mut user_in = String::new();
     let _cmdbytes = std::io::stdin().read_line(&mut user_in).unwrap();
-    return user_in[0..user_in.len() - 2].to_string();
+    return user_in.trim().to_string();
 }
 
 fn check_input(inp: &String, board: &[[char; 4]; 4], jsons: &Vec<Vec<String>>) -> bool {
     if input_is_str(inp) {
         if is_word(inp, jsons) {
             if board_contains(inp, board) {
+                println!("Found word");
                 return true;
             }
         }
