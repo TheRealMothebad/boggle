@@ -10,30 +10,38 @@ mod chars;
 mod dice;
 mod platform;
 
-use rand::seq::SliceRandom; // 0.7.2
-
 extern crate serde_derive;
 use serde_json;
+
+//async
+extern crate async_recursion;
+extern crate async_stream;
+extern crate tokio;
+
+use tokio::io::stdin;
+use tokio::io::stdout;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
+use tokio::runtime::Runtime;
+use tokio::time::timeout;
+
+use std::future::Future;
+
+use std::sync::{Arc, Mutex};
+
+use rand::seq::SliceRandom; // 0.7.2
 
 //file imports
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 
-use std::net::TcpStream;
-
 //thread stuff
-use std::io;
-use std::sync::mpsc;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::TryRecvError;
-use std::thread;
-use std::time;
 extern crate chrono;
 extern crate timer;
-use std::sync::mpsc::channel;
 
-use std::io::stdout;
+//use std::io::stdout;
 use std::time::Duration;
 
 //use boggle::shared::task::Task;
@@ -53,8 +61,10 @@ fn main() -> std::io::Result<()> {
     let online = get_online();
     let mut connection: Option<TcpStream> = None;
     let board = if online {
-        connection = Some(create_connection());
-        server_browser(&connection.unwrap())
+        async_block(async {
+            connection = Some(create_connection().await);
+            server_browser(&mut connection.unwrap()).await
+        })
     } else {
         rand_board()
     };
@@ -76,6 +86,11 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
+fn async_block<F: Future>(block: F) -> F::Output {
+    let runtime = Runtime::new().unwrap();
+    runtime.block_on(block)
+}
+
 fn get_online() -> bool {
     loop {
         let choice = input("offline or online: ");
@@ -87,32 +102,28 @@ fn get_online() -> bool {
     }
 }
 
-fn create_connection() -> TcpStream {
+async fn create_connection() -> TcpStream {
     loop {
         let ip = input("What ip would you like to connect to: ");
-        match TcpStream::connect(ip) {
+        match TcpStream::connect(ip).await {
             Ok(connection) => return connection,
             Err(_) => println!("Could not connect"),
         }
     }
 }
 
-fn server_browser(mut connection: &TcpStream) -> [[char; 4]; 4] {
+async fn server_browser(connection: &mut TcpStream) -> [[char; 4]; 4] {
     //rand_board()
     loop {
         let command = input("host, join, or list: ");
         let command_args: Vec<&str> = command.split(' ').collect::<Vec<&str>>();
+
         if command_args[0].eq("host") || command_args[0].eq("join") {
-            println!("{:?}", command_args);
-            connection.write(command.as_bytes()).unwrap();
-            //wait for someone to connect
-            /*let response = wait_for_response(&connection);
-            if response.is_some() {
-                break
-            }*/
+            connection.write(command.as_bytes()).await.unwrap();
+            break;
         } else if command_args[0].eq("list") {
-            connection.write(command.as_bytes()).unwrap();
-            let hosts = read_string(&connection).unwrap();
+            connection.write(command.as_bytes()).await.unwrap();
+            let hosts = read_from_connection(connection).await.unwrap();
             println!("hosts: {}", hosts);
         }
     }
@@ -120,11 +131,7 @@ fn server_browser(mut connection: &TcpStream) -> [[char; 4]; 4] {
     rand_board()
 }
 
-fn read_string(mut connection: &TcpStream) -> std::io::Result<String> {
-    let mut buffer = [0 as u8; 10000];
-    let length = connection.read(&mut buffer)?;
-    Ok(std::str::from_utf8(&buffer[..length]).unwrap().to_string())
-}
+
 
 /*fn wait_for_response(connection: &TcpStream) -> Option<String> {
     let waiting = stoppable_thread::spawn(|stopped| {
@@ -157,72 +164,62 @@ fn read_string(mut connection: &TcpStream) -> std::io::Result<String> {
 fn get_final_state(connection: &TcpStream, user_words: &Vec<String>) {}
 
 fn run(board: &[[char; 4]; 4]) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
+    let mut out: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
     let jsons = load_jsons();
 
-    let stdin_channel = spawn_stdin_channel("Guess a word:\n");
-
-    let timer = timer::Timer::new();
-    let (tx, rx) = channel();
-
-    let _guard = timer.schedule_with_delay(chrono::Duration::seconds(120), move || {
-        let _ignored = tx.send(()); // Avoid unwrapping here.
+    //wrap our asynchronous main loop in a tokio runtime
+    async_block(async {
+        let clone = Arc::clone(&mut out);
+        match timeout(Duration::from_secs(120), main_loop(clone, &board, &jsons)).await {
+            Ok(_) => {}  /* should never get here */
+            Err(_) => {} /* TODO check if error is not elapsed */
+        }
     });
 
+    Arc::try_unwrap(out)
+        .expect("Failed to unwrap words")
+        .into_inner()
+        .expect("Failed to move out of mutex")
+    //out.try_unwrap()
+}
+
+async fn main_loop(
+    words: Arc<Mutex<Vec<String>>>,
+    board: &[[char; 4]; 4],
+    jsons: &Vec<Vec<String>>,
+) {
     loop {
-        match stdin_channel.try_recv() {
-            Ok(key) => {
-                let word = key.trim().to_string();
-                if check_input(&word, &board, &jsons) {
-                    out.push(word);
-                }
-            }
-            Err(TryRecvError::Empty) => print!(""),
-            Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
+        let input = read_from_stdin("Guess a word:\n")
+            .await
+            .expect("Failed to read from stdin");
+        if check_input(&input, &board, &jsons) {
+            words.lock().expect("Failed to get words").push(input);
         }
-
-        match rx.try_recv() {
-            Ok(_) | Err(TryRecvError::Disconnected) => break,
-            Err(TryRecvError::Empty) => {}
-        }
-        sleep(200);
     }
-
-    out
 }
 
-fn spawn_stdin_channel(prompt: &'static str) -> Receiver<String> {
-    let (tx, rx) = mpsc::channel::<String>();
-    thread::spawn(move || loop {
-        let mut buffer = String::new();
-        print!("{}", prompt);
-        io::stdin().read_line(&mut buffer).unwrap();
-        tx.send(buffer).unwrap();
-    });
-    return rx;
+async fn read_from_stdin(prompt: &str) -> std::io::Result<String> {
+    stdout().write(prompt.as_bytes()).await?;
+    stdout().flush().await?;
+    let mut buffer = [0 as u8; 255];
+    let length = stdin().read(&mut buffer).await?;
+    let message = std::str::from_utf8(&buffer[..length])
+        .expect("Couldn't convert message to buffer!")
+        .trim()
+        .to_string();
+    Ok(message)
 }
 
-fn sleep(millis: u64) {
-    let duration = time::Duration::from_millis(millis);
-    thread::sleep(duration);
+async fn read_from_connection(stream: &mut TcpStream) -> std::io::Result<String> {
+    let mut buffer = [0 as u8; 10000];
+    let length = stream.read(&mut buffer).await?;
+    let message = std::str::from_utf8(&buffer[..length])
+        .expect("Couldn't convert message to buffer!")
+        .to_string();
+    //println!("Message has length: {}", message.len());
+    Ok(message)
 }
-
-/*fn client() {
-    let mut connection = match TcpStream::connect("127.0.0.1:1337") {
-        Ok(conn) => conn,
-        Err(_) => return,
-    };
-
-    loop {
-        let mut buffer = [0; 1000];
-        let length = connection
-            .read(&mut buffer)
-            .expect("Failed to receive message");
-        let message = std::str::from_utf8(&buffer[0..length]).expect("Failed to create string from buffer");
-        println!("Received: {} of length: {}", message, message.len());
-    }
-}*/
 
 fn board_contains(word: &String, board: &[[char; 4]; 4]) -> bool {
     for x in 0..4 {
@@ -430,7 +427,7 @@ fn load_jsons() -> Vec<Vec<String>> {
 //USER INPUT FUNCTIONS
 fn input(prompt: &str) -> String {
     print!("{}", prompt);
-    stdout().flush().expect("Couldn't flush stdout");
+    std::io::stdout().flush().expect("Couldn't flush");
     let mut user_in = String::new();
     let _cmdbytes = std::io::stdin().read_line(&mut user_in).unwrap();
     return user_in.trim().to_string();
