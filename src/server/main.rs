@@ -1,64 +1,68 @@
 extern crate tokio;
 extern crate async_recursion;
 
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
-use tokio::io::stdin;
-use tokio::io::stdout;
+use tokio::select;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio::select;
+use tokio::task::JoinHandle;
+use tokio::sync::oneshot::channel;
+use tokio::sync::oneshot::Receiver;
+use tokio::sync::oneshot::Sender;
 
-use async_recursion::async_recursion;
+use boggle::shared::utils;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:1337").await?;
-    let (mut connection, _) = listener.accept().await?;
+
+    let mut connections: Vec<JoinHandle<()>> = Vec::new();
+    let mut kill_connections: Vec<Sender<()>> = Vec::new();
 
     loop {
         select! {
-            Ok(message) = read_from_connection(&mut connection) => {
-                println!("Received: {}", message);
-            },
-            _ = read_quit_continue() => {
+            Ok((connection, _)) =  listener.accept() => {
+                let (sender, receiver): (Sender<()>, Receiver<()>) = channel();
+
+                kill_connections.push(sender);
+                connections.push(tokio::spawn(async {
+                    select! {
+                        _ = handle_client(connection) => {
+                            println!("Some error in client execution");
+                        },
+                        _ = receiver => {
+                            println!("Aborting the connection");
+                        }
+                    }
+                }));
+            }
+            _ = utils::read_quit_continue() => {
                 break
             }
         }
-        let message = read_from_connection(&mut connection).await.unwrap();
-        println!("Received: {}", message);
+    }
+
+    for conn in kill_connections {
+        conn.send(()).expect("Failed to send on mpsc channel");
+    }
+
+    for conn in connections {
+        conn.await.expect("Connection returned with an error");
     }
 
     Ok(())
 }
 
-#[async_recursion]
-async fn read_quit_continue() {
-    let input = read_from_stdin("Type 'quit' to quit!\n").await.unwrap();
-    if input.eq("quit") {
-        return;
+async fn handle_client(mut stream: TcpStream){
+    println!("Handling new connection");
+    loop {
+        let input = match utils::read_from_connection(&mut stream).await { 
+            Ok(input) => input,
+            Err(_) => {
+                println!("Received some error from socket");
+                break
+            }
+        };
+
+        println!("Got message {} from {:?}", input, stream);
     }
-    read_quit_continue().await
-}
-
-async fn read_from_stdin(prompt: &str) -> std::io::Result<String> {
-    stdout().write(prompt.as_bytes()).await?;
-    stdout().flush().await?;
-    let mut buffer = [0 as u8; 255];
-    let length = stdin().read(&mut buffer).await?;
-    let message = std::str::from_utf8(&buffer[..length])
-        .expect("Couldn't convert message to buffer!")
-        .trim()
-        .to_string();
-    Ok(message)
-}
-
-async fn read_from_connection(stream: &mut TcpStream) -> std::io::Result<String> {
-    let mut buffer = [0 as u8; 10000];
-    let length = stream.read(&mut buffer).await?;
-    let message = std::str::from_utf8(&buffer[..length])
-        .expect("Couldn't convert message to buffer!")
-        .to_string();
-    //println!("Message has length: {}", message.len());
-    Ok(message)
 }
