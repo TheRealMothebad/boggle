@@ -221,24 +221,67 @@ fn board_contains(word: &String, board: &[[char; 4]; 4]) -> bool {
     return false;
 }
 
-struct GameResult {
-    players: Vec<PlayerResult>,
+struct GameResult<'a> {
+    players: &'a Vec<PlayerResult>,
     shared: Vec<String>,
-    winner: PlayerResult,
+    winner: &'a PlayerResult,
 }
 
 fn results(p_res: Vec<PlayerResult>) {
+    let gr: GameResult = GameResult {
+        players: &p_res,
+        shared: calc_shared(&p_res),
+        winner: calc_winner(&p_res)
+    };
+    pretty_print(gr);
+}
+
+fn calc_shared(p_res: &Vec<PlayerResult>) -> Vec<String> {
+    let mut shared: Vec<String> = Vec::new();
     for word in &p_res[0].words {
-        for player in &p_res {
-            //if player.words.contains(word)
-            let _x = 0;
+        let mut cont = true;
+        for player in p_res {
+            if !player.words.contains(word) {
+                cont = false;
+            }
+            if cont {
+                shared.push(word.to_string())
+            }
         }
     }
-    //pretty_print(p_res)
+    shared
+}
+
+fn calc_winner(players: &Vec<PlayerResult>) -> &PlayerResult {
+    let mut winner: &PlayerResult = &players[0];
+    for x in players {
+        if x.words.len() > winner.words.len() {
+            winner = x;
+        }
+    }
+    winner
+}
+
+fn greatest_len_word(vect: &Vec<PlayerResult>) -> usize {
+    let mut greatest: usize = 0;
+    for x in vect {
+        for i in &x.words {
+            if i.chars().count() > greatest {
+                greatest = i.chars().count()
+            }
+        }
+    }
+    greatest
 }
 
 fn pretty_print(game_result: GameResult) {
-    let _x = 0;
+    println!("Results:\n{} won!\nWords Found:\n", &game_result.winner.name);
+    let word_width: usize = greatest_len_word(&game_result.players);
+    let mut i: usize = 0;
+    for word_list in game_result.players {
+        //placeholder code so I can push what I have
+        let _x = 0;
+    }
 }
 
 fn worm(
