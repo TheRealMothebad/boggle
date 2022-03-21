@@ -46,6 +46,7 @@ use std::time::Duration;
 
 //use boggle::shared::task::Task;
 
+#[derive(Debug)]
 struct PlayerResult {
     name: String,
     words: Vec<String>,
@@ -58,6 +59,9 @@ struct Previous {
 }
 
 fn main() -> std::io::Result<()> {
+
+    //unit_tests();
+
     let online = get_online();
     let mut connection: Option<TcpStream> = None;
     let board = if online {
@@ -237,6 +241,18 @@ fn board_contains(word: &String, board: &[[char; 4]; 4]) -> bool {
     return false;
 }
 
+fn unit_tests() {
+    print_test();
+}
+
+fn print_test() {
+    let mut players: Vec<PlayerResult> = Vec::new();
+    players.push(PlayerResult { name: "jeff".to_string(), words: vec!["this".to_string(), "is".to_string(), "a".to_string(), "test".to_string()]});
+    players.push(PlayerResult { name: "jeff".to_string(), words: vec!["this".to_string(), "is".to_string(), "a".to_string(), "stick".to_string(), "up".to_string()]});
+    results(players)
+}
+
+#[derive(Debug)]
 struct GameResult<'a> {
     players: &'a Vec<PlayerResult>,
     shared: Vec<String>,
@@ -260,9 +276,9 @@ fn calc_shared(p_res: &Vec<PlayerResult>) -> Vec<String> {
             if !player.words.contains(word) {
                 cont = false;
             }
-            if cont {
-                shared.push(word.to_string())
-            }
+        }
+        if cont {
+            shared.push(word.to_string())
         }
     }
     shared
@@ -290,13 +306,65 @@ fn greatest_len_word(vect: &Vec<PlayerResult>) -> usize {
     greatest
 }
 
-fn pretty_print(game_result: GameResult) {
-    println!("Results:\n{} won!\nWords Found:\n", &game_result.winner.name);
-    let word_width: usize = greatest_len_word(&game_result.players);
-    let mut i: usize = 0;
-    for word_list in game_result.players {
-        //placeholder code so I can push what I have
-        let _x = 0;
+fn pretty_print(gr: GameResult) {
+    println!("Results:\n{} won!\nWords Found:\n", &gr.winner.name);
+    let word_width: usize = greatest_len_word(&gr.players) + 1;
+    print_shared_words(&gr, word_width);
+    //println!("ending printing of shared words");
+    let mut nexts: Vec<usize> = Vec::new();
+    for word_list in gr.players {
+        nexts.push(0)
+    }
+    loop {
+        for index in 0 .. gr.players.len() {
+            let mut cur_word: &String = &"".to_string();
+            let mut will_print = true;
+
+            loop {
+                //println!("got here with index: {}", index);
+                if nexts[index] >= gr.players[index].words.len() {
+                    will_print = false;
+                    break;
+                }
+                if gr.shared.contains(&gr.players[index].words[nexts[index]]) {
+                    nexts[index] += 1;
+                }
+                else {
+                    break;
+                }
+            }
+            if will_print {
+                cur_word = &gr.players[index].words[nexts[index]]
+            }
+
+            print!("{wrd:<wid$}", wrd=cur_word, wid=word_width);
+
+            nexts[index] += 1;
+        }
+        println!("");
+        let mut done = true;
+        for i in 0 .. nexts.len() {
+            //print!("nexts[{}] is {}", i, nexts[i]);
+            if nexts[i] <= gr.players[i].words.len() {
+                done = false;
+            }
+        }
+        if done {
+            break;
+        }
+
+    }
+}
+
+
+
+fn print_shared_words(game_result: &GameResult, word_width: usize) {
+    println!("{:?}", game_result);
+    for word in &game_result.shared {
+        for _player in game_result.players {
+            print!("{wrd:<wid$}", wrd=word, wid=word_width)
+        }
+        println!("");
     }
 }
 
