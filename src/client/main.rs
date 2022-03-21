@@ -71,10 +71,8 @@ fn main() -> std::io::Result<()> {
         rand_board()
     };
 
-    print_board(&board);
-
     let player_result = PlayerResult {
-        name: input("What name would you like to use for you results?\n"),
+        name: input("What name would you like to use for your results?\n"),
         words: run(&board)
     };
 
@@ -170,13 +168,16 @@ async fn server_browser(connection: &mut TcpStream) -> [[char; 4]; 4] {
 }*/
 
 fn get_final_state(connection: &mut TcpStream, player_result: &PlayerResult) -> Vec<PlayerResult> {
-    Vec::new() 
+    Vec::new()
 }
 
 fn run(board: &[[char; 4]; 4]) -> Vec<String> {
     let mut out: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
     let jsons = load_jsons();
+
+    // putting this here so it appears after the name prompt to avoid confusion
+    print_board(&board);
 
     //wrap our asynchronous main loop in a tokio runtime
     async_block(async {
@@ -290,7 +291,7 @@ fn greatest_len_word(vect: &Vec<PlayerResult>) -> usize {
 }
 
 fn pretty_print(gr: GameResult) {
-    println!("Results:\n{} won!\nWords Found:\n", &gr.winner.name);
+    println!("Results:\n{} won!\n\nWords Found:\n", &gr.winner.name);
     let word_width: usize = greatest_len_word(&gr.players) + 1;
     print_shared_words(&gr, word_width);
     //println!("ending printing of shared words");
@@ -342,7 +343,7 @@ fn pretty_print(gr: GameResult) {
 
 
 fn print_shared_words(game_result: &GameResult, word_width: usize) {
-    println!("{:?}", game_result);
+    //println!("{:?}", game_result);
     for word in &game_result.shared {
         for _player in game_result.players {
             print!("{wrd:<wid$}", wrd=word, wid=word_width)
@@ -488,10 +489,19 @@ fn check_input(inp: &String, board: &[[char; 4]; 4], jsons: &Vec<Vec<String>>) -
     if input_is_str(inp) {
         if is_word(inp, jsons) {
             if board_contains(inp, board) {
-                println!("Found word");
+                println!("$$ | Word Found! | $$");
                 return true;
             }
+            else {
+                println!("?? | Word not found on board | ??")
+            }
         }
+        else {
+            println!("?? | Word not recognised | ??")
+        }
+    }
+    else {
+        println!("XX | Input should only contain letters | XX", );
     }
     return false;
 }
