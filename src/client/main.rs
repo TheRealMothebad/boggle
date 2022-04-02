@@ -136,36 +136,6 @@ async fn server_browser(connection: &mut TcpStream) -> [[char; 4]; 4] {
     rand_board()
 }
 
-
-
-/*fn wait_for_response(connection: &TcpStream) -> Option<String> {
-    let waiting = stoppable_thread::spawn(|stopped| {
-        let conn = connection.clone();
-        conn.set_nonblocking(true).unwrap();
-
-        while !stopped.get() {
-            match read_string(&conn) {
-                Ok(response) => return Some(response),
-                Err(_) => {},
-            }
-            thread::sleep(Duration::from_millis(100));
-        }
-
-        conn.set_nonblocking(false).unwrap();
-
-        None
-    });
-
-    //while we wait give the user the option to quit
-    loop {
-        let q = input("type 'quit' or to stop waiting\n");
-        if q.eq("quit") {
-            waiting.stop.join();
-            return None
-        }
-    }
-}*/
-
 fn get_final_state(connection: &mut TcpStream, player_result: &PlayerResult) -> Vec<PlayerResult> {
     Vec::new() 
 }
