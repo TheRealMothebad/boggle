@@ -56,6 +56,9 @@ struct Previous {
 }
 
 fn main() -> std::io::Result<()> {
+
+    //unit_tests();
+
     let online = get_online();
     let mut connection: Option<TcpStream> = None;
     let board = if online {
@@ -68,10 +71,8 @@ fn main() -> std::io::Result<()> {
         rand_board()
     };
 
-    print_board(&board);
-
     let player_result = PlayerResult {
-        name: input("What name would you like to use for you results?\n"),
+        name: input("What name would you like to use for your results?\n"),
         words: run(&board)
     };
 
@@ -137,13 +138,16 @@ async fn server_browser(connection: &mut TcpStream) -> [[char; 4]; 4] {
 }
 
 fn get_final_state(connection: &mut TcpStream, player_result: &PlayerResult) -> Vec<PlayerResult> {
-    Vec::new() 
+    Vec::new()
 }
 
 fn run(board: &[[char; 4]; 4]) -> Vec<String> {
     let mut out: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
     let jsons = load_jsons();
+
+    // putting this here so it appears after the name prompt to avoid confusion
+    print_board(&board);
 
     //wrap our asynchronous main loop in a tokio runtime
     async_block(async {
@@ -191,6 +195,18 @@ fn board_contains(word: &String, board: &[[char; 4]; 4]) -> bool {
     return false;
 }
 
+fn unit_tests() {
+    print_test();
+}
+
+fn print_test() {
+    let mut players: Vec<PlayerResult> = Vec::new();
+    players.push(PlayerResult { name: "jeff".to_string(), words: vec!["this".to_string(), "is".to_string(), "a".to_string(), "test".to_string()]});
+    players.push(PlayerResult { name: "jeff".to_string(), words: vec!["this".to_string(), "is".to_string(), "a".to_string(), "stick".to_string(), "up".to_string()]});
+    results(players)
+}
+
+#[derive(Debug)]
 struct GameResult<'a> {
     players: &'a Vec<PlayerResult>,
     shared: Vec<String>,
@@ -214,9 +230,9 @@ fn calc_shared(p_res: &Vec<PlayerResult>) -> Vec<String> {
             if !player.words.contains(word) {
                 cont = false;
             }
-            if cont {
-                shared.push(word.to_string())
-            }
+        }
+        if cont {
+            shared.push(word.to_string())
         }
     }
     shared
@@ -244,13 +260,65 @@ fn greatest_len_word(vect: &Vec<PlayerResult>) -> usize {
     greatest
 }
 
-fn pretty_print(game_result: GameResult) {
-    println!("Results:\n{} won!\nWords Found:\n", &game_result.winner.name);
-    let word_width: usize = greatest_len_word(&game_result.players);
-    let mut i: usize = 0;
-    for word_list in game_result.players {
-        //placeholder code so I can push what I have
-        let _x = 0;
+fn pretty_print(gr: GameResult) {
+    println!("Results:\n{} won!\n\nWords Found:\n", &gr.winner.name);
+    let word_width: usize = greatest_len_word(&gr.players) + 1;
+    print_shared_words(&gr, word_width);
+    //println!("ending printing of shared words");
+    let mut nexts: Vec<usize> = Vec::new();
+    for word_list in gr.players {
+        nexts.push(0)
+    }
+    loop {
+        for index in 0 .. gr.players.len() {
+            let mut cur_word: &String = &"".to_string();
+            let mut will_print = true;
+
+            loop {
+                //println!("got here with index: {}", index);
+                if nexts[index] >= gr.players[index].words.len() {
+                    will_print = false;
+                    break;
+                }
+                if gr.shared.contains(&gr.players[index].words[nexts[index]]) {
+                    nexts[index] += 1;
+                }
+                else {
+                    break;
+                }
+            }
+            if will_print {
+                cur_word = &gr.players[index].words[nexts[index]]
+            }
+
+            print!("{wrd:<wid$}", wrd=cur_word, wid=word_width);
+
+            nexts[index] += 1;
+        }
+        println!("");
+        let mut done = true;
+        for i in 0 .. nexts.len() {
+            //print!("nexts[{}] is {}", i, nexts[i]);
+            if nexts[i] <= gr.players[i].words.len() {
+                done = false;
+            }
+        }
+        if done {
+            break;
+        }
+
+    }
+}
+
+
+
+fn print_shared_words(game_result: &GameResult, word_width: usize) {
+    //println!("{:?}", game_result);
+    for word in &game_result.shared {
+        for _player in game_result.players {
+            print!("{wrd:<wid$}", wrd=word, wid=word_width)
+        }
+        println!("");
     }
 }
 
@@ -391,10 +459,19 @@ fn check_input(inp: &String, board: &[[char; 4]; 4], jsons: &Vec<Vec<String>>) -
     if input_is_str(inp) {
         if is_word(inp, jsons) {
             if board_contains(inp, board) {
-                println!("Found word");
+                println!("$$ | Word Found! | $$");
                 return true;
             }
+            else {
+                println!("?? | Word not found on board | ??")
+            }
         }
+        else {
+            println!("?? | Word not recognised | ??")
+        }
+    }
+    else {
+        println!("XX | Input should only contain letters | XX", );
     }
     return false;
 }
