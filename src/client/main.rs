@@ -8,10 +8,9 @@
 
 mod chars;
 mod dice;
-mod platform;
+mod dict;
 
-extern crate serde_derive;
-use serde_json;
+use std::io::Write;
 
 //async
 extern crate async_recursion;
@@ -28,11 +27,6 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 
 use rand::seq::SliceRandom; // 0.7.2
-
-//file imports
-use std::fs::File;
-use std::io::prelude::*;
-use std::path::Path;
 
 //thread stuff
 extern crate chrono;
@@ -144,15 +138,13 @@ fn get_final_state(connection: &mut TcpStream, player_result: &PlayerResult) -> 
 fn run(board: &[[char; 4]; 4]) -> Vec<String> {
     let mut out: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
-    let jsons = load_jsons();
-
     // putting this here so it appears after the name prompt to avoid confusion
     print_board(&board);
 
     //wrap our asynchronous main loop in a tokio runtime
     async_block(async {
         let clone = Arc::clone(&mut out);
-        match timeout(Duration::from_secs(120), main_loop(clone, &board, &jsons)).await {
+        match timeout(Duration::from_secs(120), main_loop(clone, &board)).await {
             Ok(_) => {}  /* should never get here */
             Err(_) => {} /* TODO check if error is not elapsed */
         }
@@ -167,13 +159,12 @@ fn run(board: &[[char; 4]; 4]) -> Vec<String> {
 async fn main_loop(
     words: Arc<Mutex<Vec<String>>>,
     board: &[[char; 4]; 4],
-    jsons: &Vec<Vec<String>>,
 ) {
     loop {
         let input = utils::read_from_stdin("Guess a word:\n")
             .await
             .expect("Failed to read from stdin");
-        if check_input(&input, &board, &jsons) {
+        if check_input(&input, &board) {
             words.lock().expect("Failed to get words").push(input);
         }
     }
@@ -367,13 +358,13 @@ fn worm(
     return false;
 }
 
-fn scraper(board: &[[char; 4]; 4], jsons: &Vec<Vec<String>>) -> Vec<String> {
+fn scraper(board: &[[char; 4]; 4]) -> Vec<String> {
     let mut res: Vec<String> = Vec::new();
     for x in 0..4 {
         for y in 0..4 {
             let prev: Vec<Previous> = Vec::new();
             let letter = board[x][y].to_string();
-            scraper_worm(x, y, letter, &board, &prev, &mut res, &jsons);
+            scraper_worm(x, y, letter, &board, &prev, &mut res);
         }
     }
     return res;
@@ -386,7 +377,6 @@ fn scraper_worm(
     board: &[[char; 4]; 4],
     p: &Vec<Previous>,
     res: &mut Vec<String>,
-    jsons: &Vec<Vec<String>>,
 ) {
     let mut prev = p.clone();
     prev.push(Previous {
@@ -404,9 +394,9 @@ fn scraper_worm(
                     let throwaway: [char; 4] = board[newx as usize];
                     let throwfarther: char = throwaway[newy as usize];
                     new_prog.push(throwfarther);
-                    if is_sub_word(&new_prog, &jsons) {
+                    if is_sub_word(&new_prog) {
                         if !res.contains(&new_prog) {
-                            if is_word(&new_prog, &jsons) {
+                            if is_word(&new_prog) {
                                 println!("Pushing: {}", &new_prog);
                                 res.push(new_prog.clone());
                             }
@@ -418,30 +408,12 @@ fn scraper_worm(
                             &board,
                             &prev,
                             res,
-                            &jsons,
                         );
                     }
                 }
             }
         }
     }
-}
-
-fn load_jsons() -> Vec<Vec<String>> {
-    let mut out_array: Vec<Vec<String>> = Vec::new();
-    let mut i: i32 = 0;
-    loop {
-        let path_str = gen_path(i);
-        let path = Path::new(&path_str);
-        let dict = json_to_string(path);
-        let in_array: Vec<String> = serde_json::from_str(&dict).unwrap();
-        out_array.push(in_array);
-        i = i + 1;
-        if i > 25 {
-            break;
-        }
-    }
-    return out_array;
 }
 
 //--- FUNCTIONALITY FUNCTIONS ---
@@ -455,9 +427,9 @@ fn input(prompt: &str) -> String {
     return user_in.trim().to_string();
 }
 
-fn check_input(inp: &String, board: &[[char; 4]; 4], jsons: &Vec<Vec<String>>) -> bool {
+fn check_input(inp: &String, board: &[[char; 4]; 4]) -> bool {
     if input_is_str(inp) {
-        if is_word(inp, jsons) {
+        if is_word(inp) {
             if board_contains(inp, board) {
                 println!("$$ | Word Found! | $$");
                 return true;
@@ -487,43 +459,15 @@ fn input_is_str(inp: &String) -> bool {
     return true;
 }
 
-fn is_word(word: &String, jsons: &Vec<Vec<String>>) -> bool {
+fn is_word(word: &String) -> bool {
     //assumes input is a string composed of only the 26 lowercase letters
-    let res = correct_json(&word, &jsons).iter().position(|x| x.eq(word));
-    if res != None {
-        return true;
+    match dict::DICT.get(&word as &str) {
+        Some(b) => return *b,
+        None => return false
     }
-    return false;
 }
 
-//JSON FUNCTIONS
-fn json_to_string(p: &Path) -> String {
-    // Open the file in read-only mode with buffer.
-    let mut f = File::open(p).unwrap();
-    let mut buffer = String::new();
-    let _smth = f.read_to_string(&mut buffer);
-    return buffer;
-}
-
-fn gen_path(i: i32) -> String {
-    let mut path_str: String = String::new();
-    path_str.push_str(platform::JSON_PATH);
-    path_str.push(chars::CHARS[i as usize]);
-    path_str.push_str("subDict.json");
-    //println!("{:?}", &path_str);
-    return path_str;
-}
-
-fn correct_json<'a>(word: &String, json: &'a Vec<Vec<String>>) -> &'a Vec<String> {
-    let first: char = word.chars().nth(0).unwrap();
-    let ind: usize = chars::CHARS.iter().position(|&x| x == first).unwrap();
-    return &json[ind];
-}
-
-// fn word(x: i32, y: i32, json: Vec<Vec<String>>) -> String {
-//     return String::new()
-// }
-
+//DICT FUNCTIONS
 fn substr_compare(sub: &String, word: &String) -> bool {
     //println!("x = {} || word = {}", &sub.to_string(), &word);
     if sub.len() <= word.len() {
@@ -534,15 +478,12 @@ fn substr_compare(sub: &String, word: &String) -> bool {
     return false;
 }
 
-fn is_sub_word(sub: &String, json: &Vec<Vec<String>>) -> bool {
+fn is_sub_word(sub: &String) -> bool {
     //println!("{}, {}", &len, &word);
-    let res = correct_json(&sub, &json)
-        .iter()
-        .position(|x| substr_compare(&sub, &x));
-    if res != None {
-        return true;
+    match dict::DICT.get(&sub as &str) {
+        Some(b) => return !*b,
+        None => return false
     }
-    return false;
 }
 
 //--- BOARD FUNCTIONS ---

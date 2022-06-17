@@ -1,0 +1,1 @@
+alpha_txt was grabbed from https://github.com/dwyl/english-words/blob/master/words_alpha.txt
